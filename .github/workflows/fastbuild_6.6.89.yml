@@ -1,7 +1,7 @@
 name: 加速版构建 6.6.89 欧加真OKI内核
 
 env:
-  TZ: Asia/Shanghai
+  TZ: Asia/Shanhai
   ANDROID_VERSION: 'android15'
   KERNEL_VERSION: '6.6'
   KERNEL_NAME: 'android15-8-g29d86c5fc9dd-abogki428889875-4k'
@@ -670,7 +670,6 @@ jobs:
           else
             zip -r ../AnyKernel3_${KSU_TYPENAME}_${{ env.KSUVER }}_${{ env.KERNEL_VERSION }}_A15_${{ env.KERNEL_NAME }}.zip ./*
           fi
-g
 
       - name: 上传 ZIP 工件
         uses: actions/upload-artifact@v4
