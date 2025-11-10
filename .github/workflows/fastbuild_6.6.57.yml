@@ -762,7 +762,7 @@ jobs:
             - 内核版本号: ${{ env.FULL_VERSION }}
             - 编译时间: ${{ env.TIME_FORM }}
             - 机型：欧加真骁龙8Elite 6.6.57 Android 15内核通用（基于一加平板2Pro 6.6.57 版官方OKI源码）
-            - 特性：${{ env.KSU_BRANCH }} + SUSFS(${{ env.susfs_status }}) + 风驰内核
+            - 特性：${{ env.KSU_BRANCH }}${{ github.event.inputs.susfs_enable == 'true' && ' + SUSFS' || '' }} + 风驰内核
             - hook模式：${{ github.event.inputs.hook_method }}
             - KPM支持 (仅对sukisu生效)：${{ github.event.inputs.kpm_enable }}
             - LZ4KD支持：${{ env.lz4kd_enable }}
