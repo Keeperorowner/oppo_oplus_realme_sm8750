@@ -11,6 +11,8 @@ echo ">>> 读取用户配置..."
 MANIFEST=${MANIFEST:-oppo+oplus+realme}
 read -p "请输入自定义内核后缀（默认：android15-8-g29d86c5fc9dd-abogki428889875-4k）: " CUSTOM_SUFFIX
 CUSTOM_SUFFIX=${CUSTOM_SUFFIX:-android15-8-g29d86c5fc9dd-abogki428889875-4k}
+read -p "是否启用SUSFS？(y/n，默认：y): " APPLY_SUSFS
+APPLY_SUSFS=${APPLY_SUSFS:-y}
 read -p "是否启用 KPM？(y/n，默认：n): " USE_PATCH_LINUX
 USE_PATCH_LINUX=${USE_PATCH_LINUX:-n}
 read -p "KSU分支版本(y=SukiSU Ultra, n=KernelSU Next, 默认：y): " KSU_BRANCH
@@ -43,6 +45,7 @@ echo "===== 配置信息 ====="
 echo "适用机型: $MANIFEST"
 echo "自定义内核后缀: -$CUSTOM_SUFFIX"
 echo "KSU分支版本: $KSU_TYPE"
+echo "启用SUSFS: $APPLY_SUSFS"
 echo "启用 KPM: $USE_PATCH_LINUX"
 echo "钩子类型: $APPLY_HOOKS"
 echo "应用 lz4&zstd 补丁: $APPLY_LZ4"
@@ -110,57 +113,72 @@ else
   sed -i "s/DKSU_VERSION=11998/DKSU_VERSION=${KSU_VERSION}/" kernel/Makefile
 fi
 
-# ===== 克隆补丁仓库&应用 SUSFS 补丁 =====
-echo ">>> 克隆补丁仓库..."
+# ===== 克隆补丁仓库&应用 补丁 =====
 cd "$WORKDIR/kernel_workspace"
-echo ">>> 应用 SUSFS&hook 补丁..."
+echo ">>> 克隆补丁仓库..."
+
+# 根据KSU分支选择不同的补丁源
 if [[ "$KSU_BRANCH" == "y" ]]; then
   git clone https://github.com/shirkneko/susfs4ksu.git -b gki-android15-6.6
   git clone https://github.com/ShirkNeko/SukiSU_patch.git
-  cp ./susfs4ksu/kernel_patches/50_add_susfs_in_gki-android15-6.6.patch ./common/
-  if [[ "$APPLY_HOOKS" == "m" || "$APPLY_HOOKS" == "M" ]]; then
-    cp ./SukiSU_patch/hooks/scope_min_manual_hooks_v1.6.patch ./common/
-  fi
-  if [[ "$APPLY_HOOKS" == "s" || "$APPLY_HOOKS" == "S" ]]; then
-    cp ./SukiSU_patch/hooks/syscall_hooks.patch ./common/
-  fi
-  cp ./SukiSU_patch/69_hide_stuff.patch ./common/
-  cp ./susfs4ksu/kernel_patches/fs/* ./common/fs/
-  cp ./susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
-  cd ./common
-  patch -p1 < 50_add_susfs_in_gki-android15-6.6.patch || true
-  #临时修复 undeclared identifier 'vma' 编译错误：把vma = find_vma(...)替换为struct vm_area_struct *vma = find_vma(...)，解决部分版本源码中vma定义缺失的问题
-  sed -i 's|vma = find_vma(mm|struct vm_area_struct *&|' ./fs/proc/task_mmu.c
-  if [[ "$APPLY_HOOKS" == "m" || "$APPLY_HOOKS" == "M" ]]; then
-    patch -p1 < scope_min_manual_hooks_v1.6.patch || true
-  fi
-  if [[ "$APPLY_HOOKS" == "s" || "$APPLY_HOOKS" == "S" ]]; then
-    patch -p1 < syscall_hooks.patch || true
-  fi
-  patch -p1 -F 3 < 69_hide_stuff.patch || true
 else
   git clone https://gitlab.com/simonpunk/susfs4ksu.git -b gki-android15-6.6
   git clone https://github.com/WildKernels/kernel_patches.git
+fi
+
+# ===== 应用 SUSFS 补丁（仅在启用SUSFS时）=====
+if [[ "$APPLY_SUSFS" == "y" || "$APPLY_SUSFS" == "Y" ]]; then
+  echo ">>> 应用 SUSFS 补丁..."
   cp ./susfs4ksu/kernel_patches/50_add_susfs_in_gki-android15-6.6.patch ./common/
   cp ./susfs4ksu/kernel_patches/fs/* ./common/fs/
   cp ./susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
-  if [[ "$APPLY_HOOKS" == "m" || "$APPLY_HOOKS" == "M" ]]; then
-    cp ./kernel_patches/next/scope_min_manual_hooks_v1.5.patch ./common/
-  fi
-  if [[ "$APPLY_HOOKS" == "s" || "$APPLY_HOOKS" == "S" ]]; then
-    cp ./kernel_patches/next/syscall_hooks.patch ./common/
-  fi
-  cp ./kernel_patches/69_hide_stuff.patch ./common/
+  
   cd ./common
   patch -p1 < 50_add_susfs_in_gki-android15-6.6.patch || true
-  #临时修复 undeclared identifier 'vma' 编译错误：把vma = find_vma(...)替换为struct vm_area_struct *vma = find_vma(...)，解决部分版本源码中vma定义缺失的问题
+  #临时修复 undeclared identifier 'vma' 编译错误
   sed -i 's|vma = find_vma(mm|struct vm_area_struct *&|' ./fs/proc/task_mmu.c
-  if [[ "$APPLY_HOOKS" == "m" || "$APPLY_HOOKS" == "M" ]]; then
+  cd ../
+else
+  echo ">>> 跳过 SUSFS 补丁..."
+fi
+
+# ===== 应用 HOOK 补丁（独立于SUSFS）=====
+if [[ "$APPLY_HOOKS" == "m" || "$APPLY_HOOKS" == "M" ]]; then
+  echo ">>> 应用 manual hooks 补丁..."
+  if [[ "$KSU_BRANCH" == "y" ]]; then
+    cp ./SukiSU_patch/hooks/scope_min_manual_hooks_v1.6.patch ./common/
+    cd ./common
+    patch -p1 < scope_min_manual_hooks_v1.6.patch || true
+  else
+    cp ./kernel_patches/next/scope_min_manual_hooks_v1.5.patch ./common/
+    cd ./common
     patch -p1 -N -F 3 < scope_min_manual_hooks_v1.5.patch || true
   fi
-  if [[ "$APPLY_HOOKS" == "s" || "$APPLY_HOOKS" == "S" ]]; then
+  cd ../
+elif [[ "$APPLY_HOOKS" == "s" || "$APPLY_HOOKS" == "S" ]]; then
+  echo ">>> 应用 syscall hooks 补丁..."
+  if [[ "$KSU_BRANCH" == "y" ]]; then
+    cp ./SukiSU_patch/hooks/syscall_hooks.patch ./common/
+    cd ./common
+    patch -p1 < syscall_hooks.patch || true
+  else
+    cp ./kernel_patches/next/syscall_hooks.patch ./common/
+    cd ./common
     patch -p1 -N -F 3 < syscall_hooks.patch || true
   fi
+  cd ../
+else
+  echo ">>> 跳过 HOOK 补丁..."
+fi
+
+# ===== 应用其他通用补丁 =====
+if [[ "$KSU_BRANCH" == "y" ]]; then
+  cp ./SukiSU_patch/69_hide_stuff.patch ./common/
+  cd ./common
+  patch -p1 -F 3 < 69_hide_stuff.patch || true
+else
+  cp ./kernel_patches/69_hide_stuff.patch ./common/
+  cd ./common
   patch -p1 -N -F 3 < 69_hide_stuff.patch || true
   #为KernelSU Next添加WildKSU管理器支持
   cd ./drivers/kernelsu
@@ -208,9 +226,14 @@ fi
 echo ">>> 添加 defconfig 配置项..."
 DEFCONFIG_FILE=./common/arch/arm64/configs/gki_defconfig
 
-# 写入通用 SUSFS/KSU 配置
+# 写入通用 KSU 配置
 cat >> "$DEFCONFIG_FILE" <<EOF
 CONFIG_KSU=y
+EOF
+
+# 仅在启用了 SUSFS 时添加 SUSFS 配置
+if [[ "$APPLY_SUSFS" == "y" || "$APPLY_SUSFS" == "Y" ]]; then
+cat >> "$DEFCONFIG_FILE" <<EOF
 CONFIG_KSU_SUSFS=y
 CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y
 CONFIG_KSU_SUSFS_SUS_PATH=y
@@ -231,14 +254,22 @@ CONFIG_KSU_SUSFS_SUS_MAP=y
 CONFIG_TMPFS_XATTR=y
 CONFIG_TMPFS_POSIX_ACL=y
 EOF
+fi
 
 if [[ "$APPLY_HOOKS" == "k" || "$APPLY_HOOKS" == "K" ]]; then
-  echo "CONFIG_KSU_SUSFS_SUS_SU=y" >> "$DEFCONFIG_FILE"
   echo "CONFIG_KSU_MANUAL_HOOK=n" >> "$DEFCONFIG_FILE"
   echo "CONFIG_KSU_KPROBES_HOOK=y" >> "$DEFCONFIG_FILE"
 else
   echo "CONFIG_KSU_MANUAL_HOOK=y" >> "$DEFCONFIG_FILE"
-  echo "CONFIG_KSU_SUSFS_SUS_SU=n" >>  "$DEFCONFIG_FILE"
+  echo "CONFIG_KSU_KPROBES_HOOK=n" >> "$DEFCONFIG_FILE"
+fi
+
+if [[ "$APPLY_SUSFS" == "y" || "$APPLY_SUSFS" == "Y" ]]; then
+  if [[ "$APPLY_HOOKS" == "k" || "$APPLY_HOOKS" == "K" ]]; then
+    echo "CONFIG_KSU_SUSFS_SUS_SU=y" >> "$DEFCONFIG_FILE"
+  else
+    echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> "$DEFCONFIG_FILE"
+  fi
 fi
 # 开启O2编译优化配置
 echo "CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE=y" >> "$DEFCONFIG_FILE"
