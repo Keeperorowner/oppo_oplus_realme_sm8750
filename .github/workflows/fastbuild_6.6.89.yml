@@ -81,11 +81,6 @@ on:
         required: true
         type: boolean
         default: 'true'
-      ccache_debug:
-        description: '是否上传 Ccache调试日志(用于调试, 无需要可关闭)'
-        required: true
-        type: boolean
-        default: 'false'
       kernel_suffix:
         description: '内核后缀(留空默认,开头别加连字符,勿加空格等影响指令运行的保留字符)'
         required: false
