@@ -254,16 +254,12 @@ jobs:
             sed -i "s/DKSU_VERSION=11998/DKSU_VERSION=${KSU_VERSION}/" kernel/Makefile
           fi
 
-      - name: 应用 KernelSU & SUSFS 补丁
+      - name: 应用 KernelSU 补丁
         run: |
           cd kernel_workspace
           if [[ ${{ github.event.inputs.ksu_type }} == "sukisu" ]]; then
             echo "正在添加SukiSU Ultra补丁..."
-            git clone https://github.com/ShirkNeko/susfs4ksu.git -b gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}
             git clone https://github.com/ShirkNeko/SukiSU_patch.git
-            cp ./susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}.patch ./common/
-            cp ./susfs4ksu/kernel_patches/fs/* ./common/fs/
-            cp ./susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
             if [[ ${{ github.event.inputs.hook_method }} == "manual" ]]; then
               cp ./SukiSU_patch/hooks/scope_min_manual_hooks_v1.6.patch ./common/
             fi
@@ -272,7 +268,6 @@ jobs:
             fi
             cp ./SukiSU_patch/69_hide_stuff.patch ./common/
             cd ./common
-            patch -p1 < 50_add_susfs_in_gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}.patch || true
             #临时修复 undeclared identifier 'vma' 编译错误：把vma = find_vma(...)替换为struct vm_area_struct *vma = find_vma(...)，解决部分版本源码中vma定义缺失的问题
             sed -i 's|vma = find_vma(mm|struct vm_area_struct *&|' ./fs/proc/task_mmu.c
             if [[ ${{ github.event.inputs.hook_method }} == "manual" ]]; then
@@ -284,11 +279,7 @@ jobs:
             patch -p1 < 69_hide_stuff.patch || true
           else
             echo "正在添加KernelSU Next补丁..."
-            git clone https://gitlab.com/simonpunk/susfs4ksu.git -b gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}
             git clone https://github.com/WildKernels/kernel_patches.git
-            cp ./susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}.patch ./common/
-            cp ./susfs4ksu/kernel_patches/fs/* ./common/fs/
-            cp ./susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
             if [[ ${{ github.event.inputs.hook_method }} == "manual" ]]; then
               cp ./kernel_patches/next/scope_min_manual_hooks_v1.5.patch ./common/
             fi
@@ -297,7 +288,6 @@ jobs:
             fi
             cp ./kernel_patches/69_hide_stuff.patch ./common/
             cd ./common
-            patch -p1 < 50_add_susfs_in_gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}.patch || true
             #临时修复 undeclared identifier 'vma' 编译错误：把vma = find_vma(...)替换为struct vm_area_struct *vma = find_vma(...)，解决部分版本源码中vma定义缺失的问题
             sed -i 's|vma = find_vma(mm|struct vm_area_struct *&|' ./fs/proc/task_mmu.c
             if [[ ${{ github.event.inputs.hook_method }} == "manual" ]]; then
@@ -311,6 +301,30 @@ jobs:
             cd ./drivers/kernelsu
             wget https://github.com/WildKernels/kernel_patches/raw/refs/heads/main/next/susfs_fix_patches/v1.5.12/fix_apk_sign.c.patch
             patch -p2 -N -F 3 < fix_apk_sign.c.patch || true
+          fi
+
+      - name: 应用 SUSFS 补丁
+        run: |
+          cd kernel_workspace
+          if [[ ${{ github.event.inputs.susfs_enable }} == "true" ]]; then
+            echo "正在应用SUSFS补丁..."
+            if [[ ${{ github.event.inputs.ksu_type }} == "sukisu" ]]; then
+              git clone https://github.com/ShirkNeko/susfs4ksu.git -b gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}
+              cp ./susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}.patch ./common/
+              cp ./susfs4ksu/kernel_patches/fs/* ./common/fs/
+              cp ./susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
+            else
+              git clone https://gitlab.com/simonpunk/susfs4ksu.git -b gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}
+              cp ./susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}.patch ./common/
+              cp ./susfs4ksu/kernel_patches/fs/* ./common/fs/
+              cp ./susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
+            fi
+            cd ./common
+            patch -p1 < 50_add_susfs_in_gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}.patch || true
+            #临时修复 undeclared identifier 'vma' 编译错误：把vma = find_vma(...)替换为struct vm_area_struct *vma = find_vma(...)，解决部分版本源码中vma定义缺失的问题
+            sed -i 's|vma = find_vma(mm|struct vm_area_struct *&|' ./fs/proc/task_mmu.c
+          else
+            echo "SUSFS已禁用，跳过SUSFS补丁应用..."
           fi
           
       - name: 应用lz4 1.10.0 & zstd 1.5.7补丁
@@ -728,10 +742,16 @@ jobs:
           else
             rekernel_enable="false"
           fi
+          if [[ "${{ github.event.inputs.susfs_enable }}" == "true" ]]; then
+            susfs_status="启用"
+          else
+            susfs_status="禁用"
+          fi
           echo "lz4kd_enable=$lz4kd_enable" >> $GITHUB_ENV
           echo "lz4_zstd_enable=$lz4_zstd_enable" >> $GITHUB_ENV
           echo "adios_enable=$adios_enable" >> $GITHUB_ENV
           echo "rekernel_enable=$rekernel_enable" >> $GITHUB_ENV
+          echo "susfs_status=$susfs_status" >> $GITHUB_ENV
          
       - name: 创建发布
         id: create_release
@@ -744,7 +764,7 @@ jobs:
             - 内核版本号: ${{ env.FULL_VERSION }}
             - 编译时间: ${{ env.TIME_FORM }}
             - 机型：欧加真骁龙8Elite 6.6.56 Android 15内核通用（基于一加13t 6.6.56 版官方OKI源码）
-            - 特性：${{ env.KSU_BRANCH }} + SUSFS + 风驰内核
+            - 特性：${{ env.KSU_BRANCH }} + SUSFS(${{ env.susfs_status }}) + 风驰内核
             - hook模式：${{ github.event.inputs.hook_method }}
             - KPM支持 (仅对sukisu生效)：${{ github.event.inputs.kpm_enable }}
             - LZ4KD支持：${{ env.lz4kd_enable }}
